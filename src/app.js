@@ -1,4 +1,5 @@
 import { PhononTTS } from 'phonon-tts';
+import { importBook } from './book-import.js';
 import './styles.css';
 
 const $ = (id) => document.getElementById(id);
@@ -89,7 +90,20 @@ async function loadPhonon() {
 
 els.text.addEventListener('input', renderReading); els.play.addEventListener('click', () => { if (isPaused && audioContext) { audioContext.resume(); isPaused = false; isPlaying = true; els.play.textContent = '❚❚'; els.play.classList.add('paused'); els.status.textContent = 'Reading'; els.dot.classList.add('playing'); return; } if (isPlaying) { audioContext?.suspend(); isPaused = true; els.status.textContent = 'Paused'; els.dot.classList.remove('playing'); return; } playReading(); }); els.stop.addEventListener('click', () => stopReading()); els.load.addEventListener('click', loadPhonon); els.save.addEventListener('click', saveEntry); els.newText.addEventListener('click', resetText); els.focus.addEventListener('click', () => { document.body.classList.toggle('focus-mode'); els.focus.textContent = document.body.classList.contains('focus-mode') ? '◉ Exit focus' : '◉ Focus mode'; });
 els.speed.addEventListener('input', () => { els.speedValue.textContent = `${Number(els.speed.value).toFixed(1)}×`; if (!isPlaying) renderReading(); }); els.volume.addEventListener('input', () => { els.volumeValue.textContent = `${Math.round(Number(els.volume.value) * 100)}%`; if (gainNode) gainNode.gain.value = Number(els.volume.value); });
-els.file.addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file) return; els.text.value = markdownToText(await file.text()); els.title.textContent = file.name.replace(/\.(md|txt)$/i, ''); currentId = null; renderReading(); notify(`${file.name} imported locally.`); event.target.value = ''; });
+els.file.addEventListener('change', async (event) => {
+  const file = event.target.files?.[0]; if (!file) return;
+  const lower = file.name.toLowerCase();
+  const isBook = lower.endsWith('.epub') || lower.endsWith('.pdf');
+  try {
+    if (isBook) notify(`Reading ${file.name} — this can take a moment for large books…`);
+    const { title, text } = await importBook(file);
+    els.text.value = isBook ? text : markdownToText(text);
+    els.title.textContent = title || 'Untitled passage';
+    currentId = null; renderReading();
+    notify(`${file.name} imported locally (${text.split(/\s+/).filter(Boolean).length.toLocaleString()} words).`);
+  } catch (error) { console.error(error); notify(error?.message || 'Could not import this file.'); }
+  event.target.value = '';
+});
 els.shortcuts.addEventListener('click', () => els.dialog.showModal()); els.closeDialog.addEventListener('click', () => els.dialog.close()); els.dialog.addEventListener('click', (event) => { if (event.target === els.dialog) els.dialog.close(); });
 window.addEventListener('online', setConnection); window.addEventListener('offline', setConnection); window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); deferredInstall = event; els.install.hidden = false; }); els.install.addEventListener('click', async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; els.install.hidden = true; });
 document.addEventListener('keydown', (event) => { const typing = ['TEXTAREA','INPUT','SELECT'].includes(document.activeElement?.tagName); if (typing) return; if (event.code === 'Space') { event.preventDefault(); els.play.click(); } if (event.key.toLowerCase() === 'f') els.focus.click(); if (event.key === 'Escape') stopReading(); if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); stopReading(); playReading(); } });
